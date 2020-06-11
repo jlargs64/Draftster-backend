@@ -66,24 +66,25 @@ io.on('connection', (socket) => {
 					};
 					// Success
 					return fn({
-						roomExists: false,
-						nameValid: true,
 						room: rooms[roomId],
 					});
 				} else {
 					// The room exists but the player name is invalid
 					return fn({
-						roomExists: false,
-						nameValid: false,
+						error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`,
 					});
 				}
 			} else {
 				// The room already exists
-				return fn({ roomExists: true });
+				return fn({
+					error: `That room id already exists, please choose another.`,
+				});
 			}
 		} else {
 			// The room name is invalid
-			return fn({ roomNameInvalid: true });
+			return fn({
+				error: `That room id is not valid. Make sure it's not empty and doesn't include dashes.`,
+			});
 		}
 	});
 
@@ -111,22 +112,21 @@ io.on('connection', (socket) => {
 					// Both fields are good!
 					// Send message history as well
 					return fn({
-						roomExists: true,
-						nameInUse: false,
-						nameValid: true,
 						room: rooms[roomId],
 					});
 				} else {
 					// The room exists but the name is in use
-					return fn({ roomExists: true, nameInUse: false, nameValid: false });
+					return fn({
+						error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`,
+					});
 				}
 			} else {
 				// The room exists but the name is in use
-				return fn({ roomExists: true, nameInUse: true });
+				return fn({ error: `That name is already in use in room: ${roomId}` });
 			}
 		} else {
 			// The room does not exist
-			return fn({ roomExists: false, nameInUse: false });
+			return fn({ error: `That room does not exist.` });
 		}
 	});
 
