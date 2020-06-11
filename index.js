@@ -1,10 +1,13 @@
 const app = require('express')();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
+const cors = require('cors');
 
 const port = process.env.PORT || 6969;
 
 const rooms = {};
+
+app.use(cors());
 
 http.listen(port, () => {
 	console.log(`Draftster API running on ${port}`);
@@ -61,6 +64,7 @@ io.on('connection', (socket) => {
 						players: [hostName],
 						messages: [],
 						currentTurn: 0,
+						currentRound: 1,
 						inProgress: false,
 						availablePicks: ['MSFT', 'AAPL', 'TSLA', 'NFLX'],
 					};
@@ -95,39 +99,54 @@ io.on('connection', (socket) => {
 
 		// Check if room has been created
 		if (rooms.hasOwnProperty(roomId)) {
-			// Check if player name is available
-			if (!rooms[roomId].players.includes(playerName)) {
-				if (playerName !== '' && !playerName.includes('-')) {
-					// Create and join the room
-					socket.join(roomId);
-					socket.id = playerName + '-' + roomId;
+			// Check if room's draft is already in progress
+			if (!rooms[roomId].inProgress) {
+				// Check if player name is available
+				if (!rooms[roomId].players.includes(playerName)) {
+					if (playerName !== '' && !playerName.includes('-')) {
+						// Create and join the room
+						socket.join(roomId);
+						socket.id = playerName + '-' + roomId;
 
-					// Add player to room and send new data to players
-					rooms[roomId].players.push(playerName);
-					const players = rooms[roomId].players;
+						// Add player to room and send new data to players
+						rooms[roomId].players.push(playerName);
+						const players = rooms[roomId].players;
 
-					// Notify players a new user has joined
-					io.emit('userConnected', { name: playerName, players: players });
+						// Notify players a new user has joined
+						io.emit('userConnected', { name: playerName, players: players });
 
-					// Both fields are good!
-					// Send message history as well
-					return fn({
-						room: rooms[roomId],
-					});
+						// Both fields are good!
+						// Send message history as well
+						return fn({
+							room: rooms[roomId],
+						});
+					} else {
+						// The room exists but the name is in use
+						return fn({
+							error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`,
+						});
+					}
 				} else {
 					// The room exists but the name is in use
 					return fn({
-						error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`,
+						error: `That name is already in use in room: ${roomId}`,
 					});
 				}
 			} else {
-				// The room exists but the name is in use
-				return fn({ error: `That name is already in use in room: ${roomId}` });
+				// The room is in progress so you can't join
+				return fn({
+					error: `That room is currently locked and in progress.`,
+				});
 			}
 		} else {
 			// The room does not exist
 			return fn({ error: `That room does not exist.` });
 		}
+	});
+
+	socket.on('lockRoom', () => {
+		const roomId = socket.id.split('-')[1];
+		rooms[roomId].inProgress = true;
 	});
 
 	// Message from client
