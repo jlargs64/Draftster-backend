@@ -13,49 +13,77 @@ http.listen(port, () => {
 io.on('connection', (socket) => {
 	// The user disconnected
 	socket.on('disconnect', () => {
-		const data = socket.id.split('-');
-		const name = data[0];
-		const roomId = data[1];
-		// Remove user from room
-		const updatedPlayers = rooms[roomId].players.filter(
-			(value, index, arr) => value != name
-		);
-		rooms[roomId].players = updatedPlayers;
+		if (socket.id.includes('-')) {
+			const data = socket.id.split('-');
+			const name = data[0];
+			const roomId = data[1];
+			// If the room exists and this player belongs to it
+			if (
+				rooms.hasOwnProperty(roomId) &&
+				rooms[roomId].players.includes(name)
+			) {
+				// Remove user from room
+				const updatedPlayers = rooms[roomId].players.filter(
+					(value) => value != name
+				);
 
-		// send new players array too
-		//Notify users of disconnect
-		socket
-			.to(roomId)
-			.emit('userDisconnected', { name: name, updatedPlayers: updatedPlayers });
+				// If all the players left, delete the room
+				if (updatedPlayers.length === 0) {
+					delete rooms[roomId];
+				} else {
+					rooms[roomId].players = updatedPlayers;
+
+					// send new players array too
+					//Notify users of disconnect
+					socket.to(roomId).emit('userDisconnected', {
+						name: name,
+						updatedPlayers: updatedPlayers,
+					});
+				}
+			}
+		}
 	});
 
 	// The user creates a room
 	socket.on('createRoom', (data, fn) => {
 		const roomId = data.roomId;
 		const hostName = data.name;
-
-		// Check if room has been created
-		if (rooms[roomId] === undefined) {
-			if (hostName !== '' && !hostName.includes('-')) {
-				// Create and join the room
-				socket.join(roomId);
-				socket.id = hostName + '-' + roomId;
-				rooms[roomId] = {
-					players: [hostName],
-					messages: [],
-				};
-				return fn({
-					roomExists: false,
-					nameValid: true,
-				});
+		// Check if room id is valid
+		if (roomId !== '') {
+			// Check if room has been created
+			if (rooms[roomId] === undefined) {
+				if (hostName !== '' && !hostName.includes('-')) {
+					// Create and join the room
+					socket.join(roomId);
+					socket.id = hostName + '-' + roomId;
+					rooms[roomId] = {
+						id: roomId,
+						players: [hostName],
+						messages: [],
+						currentTurn: 0,
+						inProgress: false,
+						availablePicks: ['MSFT', 'AAPL', 'TSLA', 'NFLX'],
+					};
+					// Success
+					return fn({
+						roomExists: false,
+						nameValid: true,
+						room: rooms[roomId],
+					});
+				} else {
+					// The room exists but the player name is invalid
+					return fn({
+						roomExists: false,
+						nameValid: false,
+					});
+				}
 			} else {
-				return fn({
-					roomExists: false,
-					nameValid: false,
-				});
+				// The room already exists
+				return fn({ roomExists: true });
 			}
 		} else {
-			return fn({ roomExists: true });
+			// The room name is invalid
+			return fn({ roomNameInvalid: true });
 		}
 	});
 
@@ -75,7 +103,6 @@ io.on('connection', (socket) => {
 
 					// Add player to room and send new data to players
 					rooms[roomId].players.push(playerName);
-					const messageHistory = rooms[roomId].messages;
 					const players = rooms[roomId].players;
 
 					// Notify players a new user has joined
@@ -87,8 +114,7 @@ io.on('connection', (socket) => {
 						roomExists: true,
 						nameInUse: false,
 						nameValid: true,
-						players: players,
-						messages: messageHistory,
+						room: rooms[roomId],
 					});
 				} else {
 					// The room exists but the name is in use
