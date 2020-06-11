@@ -17,10 +17,16 @@ io.on('connection', (socket) => {
 		const name = data[0];
 		const roomId = data[1];
 		// Remove user from room
-		//rooms[roomId].players.filter((value, index, arr) => value != name);
+		const updatedPlayers = rooms[roomId].players.filter(
+			(value, index, arr) => value != name
+		);
+		rooms[roomId].players = updatedPlayers;
+
 		// send new players array too
 		//Notify users of disconnect
-		socket.to(roomId).emit('userDisconnected', name);
+		socket
+			.to(roomId)
+			.emit('userDisconnected', { name: name, updatedPlayers: updatedPlayers });
 	});
 
 	// The user creates a room
@@ -67,14 +73,13 @@ io.on('connection', (socket) => {
 					socket.join(roomId);
 					socket.id = playerName + '-' + roomId;
 
-					// Notify players a new user has joined
-
-					io.emit('userConnected', playerName);
-
 					// Add player to room and send new data to players
 					rooms[roomId].players.push(playerName);
 					const messageHistory = rooms[roomId].messages;
 					const players = rooms[roomId].players;
+
+					// Notify players a new user has joined
+					io.emit('userConnected', { name: playerName, players: players });
 
 					// Both fields are good!
 					// Send message history as well
