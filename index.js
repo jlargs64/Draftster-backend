@@ -10,222 +10,264 @@ const rooms = {};
 app.use(cors());
 
 http.listen(port, () => {
-  console.log(`Draftster API running on ${port}`);
+	console.log(`Draftster API running on ${port}`);
 });
 
 io.on('connection', (socket) => {
-  // The user disconnected
-  socket.on('disconnect', () => {
-    if (socket.id.includes('-')) {
-      const data = socket.id.split('-');
-      const name = data[0];
-      const roomId = data[1];
-      // If the room exists and this player belongs to it
-      if (
-        rooms.hasOwnProperty(roomId) &&
-        rooms[roomId].players.includes(name)
-      ) {
-        // Remove user from room
-        const updatedPlayers = rooms[roomId].players.filter(
-          (value) => value != name
-        );
-        // Remove user stock picks
-        delete rooms[roomId].playerPicks[name];
-        const updatedPlayerPicks = rooms[roomId].playerPicks;
+	// The user disconnected
+	socket.on('disconnect', () => {
+		if (socket.id.includes('-')) {
+			const data = socket.id.split('-');
+			const name = data[0];
+			const roomId = data[1];
+			// If the room exists and this player belongs to it
+			if (
+				rooms.hasOwnProperty(roomId) &&
+				rooms[roomId].players.includes(name)
+			) {
+				// Add player to disconnected players array
+				rooms[roomId].disconnectedPlayers.push(name);
+				const updatedDisconnectedPlayers = rooms[roomId].disconnectedPlayers;
+				// Remove user from room
+				//	const updatedPlayers = rooms[roomId].players.filter(
+				//	(value) => value != name
+				//	);
+				// Remove user stock picks
+				//delete rooms[roomId].playerPicks[name];
+				//const updatedPlayerPicks = rooms[roomId].playerPicks;
 
-        // If all the players left, delete the room
-        if (updatedPlayers.length === 0) {
-          delete rooms[roomId];
-        } else {
-          rooms[roomId].players = updatedPlayers;
+				// If all the players left, delete the room
+				//if (updatedPlayers.length === 0) {
+				//delete rooms[roomId];
+				//} else {
+				//rooms[roomId].players = updatedPlayers;
 
-          // send new players array too
-          //Notify users of disconnect
-          socket.to(roomId).emit('userDisconnected', {
-            name: name,
-            updatedPlayers: updatedPlayers,
-            updatedPlayerPicks: updatedPlayerPicks
-          });
-        }
-      }
-    }
-  });
+				// send new players array too
+				//Notify users of disconnect
+				socket.to(roomId).emit('userDisconnected', {
+					name: name,
+					disconnectedPlayers: updatedDisconnectedPlayers,
+					//updatedPlayers: updatedPlayers,
+					//updatedPlayerPicks: updatedPlayerPicks,
+				});
+				//}
+			}
+		}
+	});
 
-  // The user creates a room
-  socket.on('createRoom', (data, fn) => {
-    const roomId = data.roomId;
-    const hostName = data.name;
-    // Check if room id is valid
-    if (roomId !== '') {
-      // Check if room has been created
-      if (rooms[roomId] === undefined) {
-        if (hostName !== '' && !hostName.includes('-')) {
-          // Create and join the room
-          socket.join(roomId);
-          socket.id = hostName + '-' + roomId;
-          rooms[roomId] = {
-            id: roomId,
-            players: [hostName],
-            messages: [],
-            currentTurn: 0,
-            currentRound: 1,
-            inProgress: false,
-            availablePicks: ['MSFT', 'AAPL', 'TSLA', 'NFLX'],
-            playerPicks: {}
-          };
-          rooms[roomId].playerPicks[hostName] = [];
+	// The user creates a room
+	socket.on('createRoom', (data, fn) => {
+		const roomId = data.roomId;
+		const hostName = data.name;
+		// Check if room id is valid
+		if (roomId !== '') {
+			// Check if room has been created
+			if (rooms[roomId] === undefined) {
+				if (hostName !== '' && !hostName.includes('-')) {
+					// Create and join the room
+					socket.join(roomId);
+					socket.id = hostName + '-' + roomId;
+					rooms[roomId] = {
+						id: roomId,
+						host: hostName,
+						players: [hostName],
+						disconnectedPlayers: [],
+						messages: [],
+						currentTurn: 0,
+						currentRound: 1,
+						inProgress: false,
+						availablePicks: ['MSFT', 'AAPL', 'TSLA', 'NFLX'],
+						playerPicks: {},
+					};
+					rooms[roomId].playerPicks[hostName] = [];
 
-          // Success
-          return fn({
-            room: rooms[roomId]
-          });
-        } else {
-          // The room exists but the player name is invalid
-          return fn({
-            error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`
-          });
-        }
-      } else {
-        // The room already exists
-        return fn({
-          error: `That room id already exists, please choose another.`
-        });
-      }
-    } else {
-      // The room name is invalid
-      return fn({
-        error: `That room id is not valid. Make sure it's not empty and doesn't include dashes.`
-      });
-    }
-  });
+					// Success
+					return fn({
+						room: rooms[roomId],
+					});
+				} else {
+					// The room exists but the player name is invalid
+					return fn({
+						error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`,
+					});
+				}
+			} else {
+				// The room already exists
+				return fn({
+					error: `That room id already exists, please choose another.`,
+				});
+			}
+		} else {
+			// The room name is invalid
+			return fn({
+				error: `That room id is not valid. Make sure it's not empty and doesn't include dashes.`,
+			});
+		}
+	});
 
-  // The user joins a room
-  socket.on('joinRoom', (data, fn) => {
-    const roomId = data.roomId;
-    const playerName = data.name;
+	// The user joins a room
+	socket.on('joinRoom', (data, fn) => {
+		const roomId = data.roomId;
+		const playerName = data.name;
 
-    // Check if room has been created
-    if (rooms.hasOwnProperty(roomId)) {
-      // Check if room's draft is already in progress
-      if (!rooms[roomId].inProgress) {
-        // Check if player name is available
-        if (!rooms[roomId].players.includes(playerName)) {
-          if (playerName !== '' && !playerName.includes('-')) {
-            // Create and join the room
-            socket.join(roomId);
-            socket.id = playerName + '-' + roomId;
+		// Check if room has been created
+		if (rooms.hasOwnProperty(roomId)) {
+			// Check if room's draft is already in progress
 
-            // Add player to room and send new data to players
-            rooms[roomId].players.push(playerName);
-            rooms[roomId].playerPicks[playerName] = [];
-            const players = rooms[roomId].players;
-            const playerPicks = rooms[roomId].playerPicks;
+			if (rooms[roomId].disconnectedPlayers.includes(playerName)) {
+				// Remove player from disconnected players
+				const updatedPlayers = rooms[roomId].disconnectedPlayers.filter(
+					(value) => value != playerName
+				);
+				rooms[roomId].disconnectedPlayers = updatedPlayers;
+				// Create and join the room
+				socket.join(roomId);
+				socket.id = playerName + '-' + roomId;
 
-            // Notify players a new user has joined
-            io.emit('userConnected', {
-              name: playerName,
-              players: players,
-              playerPicks: playerPicks
-            });
+				const players = rooms[roomId].players;
+				const playerPicks = rooms[roomId].playerPicks;
+				const disconnectedPlayers = rooms[roomId].disconnectedPlayers;
 
-            // Both fields are good!
-            // Send message history as well
-            return fn({
-              room: rooms[roomId]
-            });
-          } else {
-            // The room exists but the name is in use
-            return fn({
-              error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`
-            });
-          }
-        } else {
-          // The room exists but the name is in use
-          return fn({
-            error: `That name is already in use in room: ${roomId}`
-          });
-        }
-      } else {
-        // The room is in progress so you can't join
-        return fn({
-          error: `That room is currently locked and in progress.`
-        });
-      }
-    } else {
-      // The room does not exist
-      return fn({ error: `That room does not exist.` });
-    }
-  });
+				// Notify players a new user has joined
+				io.to(roomId).emit('userConnected', {
+					name: playerName,
+					players: players,
+					playerPicks: playerPicks,
+					disconnectedPlayers: disconnectedPlayers,
+				});
 
-  // Message from client
-  socket.on('message', (data) => {
-    const message = data.message;
-    const roomId = data.roomId;
+				// Both fields are good!
+				// Send message history as well
+				return fn({
+					room: rooms[roomId],
+				});
+			} else if (!rooms[roomId].inProgress) {
+				// Check if player name is available
+				if (!rooms[roomId].players.includes(playerName)) {
+					if (playerName !== '' && !playerName.includes('-')) {
+						// Create and join the room
+						socket.join(roomId);
+						socket.id = playerName + '-' + roomId;
 
-    // Save message to room messages history
-    rooms[roomId].messages.push(message);
-    // Send to all clients
-    socket.to(roomId).emit('message', message);
-  });
+						// Add player to room and send new data to players
+						rooms[roomId].players.push(playerName);
+						rooms[roomId].playerPicks[playerName] = [];
+						const players = rooms[roomId].players;
+						const playerPicks = rooms[roomId].playerPicks;
+						const disconnectedPlayers = rooms[roomId].disconnectedPlayers;
 
-  // Lock the room to start the draft
-  // and set to in progress
-  socket.on('lockRoom', () => {
-    const roomId = socket.id.split('-')[1];
-    rooms[roomId].inProgress = true;
-    socket.to(roomId).emit('lockRoom');
-  });
+						// Notify players a new user has joined
+						io.to(roomId).emit('userConnected', {
+							name: playerName,
+							players: players,
+							playerPicks: playerPicks,
+							disconnectedPlayers: disconnectedPlayers,
+						});
 
-  socket.on('selectPick', (pick, fn) => {
-    const data = socket.id.split('-');
-    const name = data[0];
-    const roomId = data[1];
+						// Both fields are good!
+						// Send message history as well
+						return fn({
+							room: rooms[roomId],
+						});
+					} else {
+						// The room exists but the name is in use
+						return fn({
+							error: `That name is not valid. Make sure it's not empty and doesn't include dashes.`,
+						});
+					}
+				} else {
+					// The room exists but the name is in use
+					return fn({
+						error: `That name is already in use in room: ${roomId}`,
+					});
+				}
+			} else {
+				// The room is in progress so you can't join
+				return fn({
+					error: `That room is currently locked and in progress.`,
+				});
+			}
+		} else {
+			// The room does not exist
+			return fn({ error: `That room does not exist.` });
+		}
+	});
 
-    // Only process if draft is in progress
-    if (rooms[roomId].inProgress) {
-      const currentTurn = rooms[roomId].currentTurn;
-      // Only pick if it's the players current turn
-      if (name === rooms[roomId].players[currentTurn]) {
-        // Add the pick to the player's team
-        rooms[roomId].playerPicks[name].push(pick);
+	// Message from client
+	socket.on('message', (data) => {
+		const message = data.message;
+		const roomId = data.roomId;
 
-        // Remove the pick from available picks
-        rooms[roomId].availablePicks = rooms[roomId].availablePicks.filter(
-          (value) => value != pick
-        );
-        const updatedAvailablePicks = rooms[roomId].availablePicks;
-        const updatedPlayerPicks = rooms[roomId].playerPicks;
-        // Increment turn
-        let updatedTurnNum = rooms[roomId].currentTurn + 1;
-        let updatedRoundNum = rooms[roomId].currentRound;
-        // Increment round if all players took their turn
-        if (updatedTurnNum > rooms[roomId].players.length - 1) {
-          updatedTurnNum = 0;
-          updatedRoundNum += 1;
-        }
-        rooms[roomId].currentTurn = updatedTurnNum;
-        rooms[roomId].currentRound = updatedRoundNum;
-        const response = {
-          updatedAvailablePicks: updatedAvailablePicks,
-          updatedPlayerPicks: updatedPlayerPicks,
-          updatedTurnNum: updatedTurnNum,
-          updatedRoundNum: updatedRoundNum
-        };
+		// Save message to room messages history
+		rooms[roomId].messages.push(message);
+		// Send to all clients
+		socket.to(roomId).emit('message', message);
+	});
 
-        socket.to(roomId).emit('selectPick', response);
-      } else {
-        console.log(currentTurn);
-        console.log(rooms[roomId].players[currentTurn]);
-        // It's not the players turn
-        return fn({
-          error: `It's not the your turn!`
-        });
-      }
-    } else {
-      // The draft is not in progress
-      return fn({
-        error: `The draft is not in progress.`
-      });
-    }
-  });
+	// Lock the room to start the draft
+	// and set to in progress
+	socket.on('lockRoom', (fn) => {
+		const data = socket.id.split('-');
+		const name = data[0];
+		const roomId = data[1];
+		if (rooms[roomId].host === name) {
+			rooms[roomId].inProgress = true;
+			socket.to(roomId).emit('lockRoom');
+		} else {
+			return fn({ error: 'Only the host can start the draft.' });
+		}
+	});
+
+	socket.on('selectPick', (pick, fn) => {
+		const data = socket.id.split('-');
+		const name = data[0];
+		const roomId = data[1];
+
+		// Only process if draft is in progress
+		if (rooms[roomId].inProgress) {
+			const currentTurn = rooms[roomId].currentTurn;
+			// Only pick if it's the players current turn
+			if (name === rooms[roomId].players[currentTurn]) {
+				// Add the pick to the player's team
+				rooms[roomId].playerPicks[name].push(pick);
+
+				// Remove the pick from available picks
+				rooms[roomId].availablePicks = rooms[roomId].availablePicks.filter(
+					(value) => value != pick
+				);
+				const updatedAvailablePicks = rooms[roomId].availablePicks;
+				const updatedPlayerPicks = rooms[roomId].playerPicks;
+				// Increment turn
+				let updatedTurnNum = rooms[roomId].currentTurn + 1;
+				let updatedRoundNum = rooms[roomId].currentRound;
+				// Increment round if all players took their turn
+				if (updatedTurnNum > rooms[roomId].players.length - 1) {
+					updatedTurnNum = 0;
+					updatedRoundNum += 1;
+				}
+				rooms[roomId].currentTurn = updatedTurnNum;
+				rooms[roomId].currentRound = updatedRoundNum;
+				const response = {
+					updatedAvailablePicks: updatedAvailablePicks,
+					updatedPlayerPicks: updatedPlayerPicks,
+					updatedTurnNum: updatedTurnNum,
+					updatedRoundNum: updatedRoundNum,
+				};
+
+				socket.to(roomId).emit('selectPick', response);
+			} else {
+				console.log(currentTurn);
+				console.log(rooms[roomId].players[currentTurn]);
+				// It's not the players turn
+				return fn({
+					error: `It's not the your turn!`,
+				});
+			}
+		} else {
+			// The draft is not in progress
+			return fn({
+				error: `The draft is not in progress.`,
+			});
+		}
+	});
 });
