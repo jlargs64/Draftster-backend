@@ -1,0 +1,2 @@
+# Draftster-backend
+Draftster is an example of how I believe the real time drafting system works for ESPN, Sleeper, and other fantasy football games. I built this using node.js and socket.io and used arrays for storing information, but if I were to expand upon it, I'd keep that information in a Redis database for the draft and then also asynchronously update a relational database with the changes.
